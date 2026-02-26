@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import FileUpload from './components/FileUpload';
 import StockList from './components/StockList';
 import SelectedStocks from './components/SelectedStocks';
@@ -15,6 +15,35 @@ function App() {
   const [error, setError] = useState('');
   const [useMockApi, setUseMockApi] = useState(true);
   const [activeTab, setActiveTab] = useState('import');
+  const [history, setHistory] = useState([]);
+
+  useEffect(() => {
+    // 从localStorage读取历史记录
+    const savedHistory = localStorage.getItem('stockSelectionHistory');
+    if (savedHistory) {
+      try {
+        setHistory(JSON.parse(savedHistory));
+      } catch (error) {
+        console.error('Failed to parse history:', error);
+        localStorage.removeItem('stockSelectionHistory');
+      }
+    }
+    
+    // 从localStorage读取股票列表
+    const savedStocks = localStorage.getItem('stockList');
+    if (savedStocks) {
+      try {
+        const parsedStocks = JSON.parse(savedStocks);
+        setStocks(parsedStocks);
+        if (parsedStocks.length > 0) {
+          setActiveTab('stocks');
+        }
+      } catch (error) {
+        console.error('Failed to parse stocks:', error);
+        localStorage.removeItem('stockList');
+      }
+    }
+  }, []);
 
   const handleFileLoaded = async (file) => {
     setLoading(true);
@@ -26,6 +55,8 @@ function App() {
       const rawData = await validateExcelFile(file);
       const parsedData = parseStockData(rawData);
       setStocks(parsedData);
+      // 保存股票列表到localStorage
+      localStorage.setItem('stockList', JSON.stringify(parsedData));
       setActiveTab('stocks');
     } catch (err) {
       setError(err.message);
@@ -46,6 +77,23 @@ function App() {
     const shuffled = [...stocks].sort(() => 0.5 - Math.random());
     const selected = shuffled.slice(0, 2);
     setSelectedStocks(selected);
+    
+    const selectionTime = new Date();
+    const selectionRecord = {
+      id: Date.now().toString(),
+      timestamp: selectionTime.toISOString(),
+      formattedTime: selectionTime.toLocaleString('zh-CN'),
+      stocks: selected
+    };
+    
+    let updatedHistory = [selectionRecord, ...history];
+    // 限制历史记录数量为50条
+    if (updatedHistory.length > 50) {
+      updatedHistory = updatedHistory.slice(0, 50);
+    }
+    setHistory(updatedHistory);
+    localStorage.setItem('stockSelectionHistory', JSON.stringify(updatedHistory));
+    
     setActiveTab('selected');
   };
 
@@ -79,6 +127,8 @@ function App() {
     setSelectedStocks([]);
     setAnalysis(null);
     setError('');
+    // 清除localStorage中的股票列表
+    localStorage.removeItem('stockList');
     setActiveTab('import');
   };
 
@@ -117,6 +167,12 @@ function App() {
               disabled={!analysis}
             >
               📊 分析结果
+            </button>
+            <button
+              className={`tab-button ${activeTab === 'history' ? 'active' : ''}`}
+              onClick={() => setActiveTab('history')}
+            >
+              📜 历史记录
             </button>
           </div>
         </div>
@@ -235,6 +291,68 @@ function App() {
                   📁 上传新文件
                 </button>
               </div>
+            </div>
+          </>
+        )}
+
+        {activeTab === 'history' && (
+          <>
+            <h2>📜 历史选股记录</h2>
+            
+            <div className="card">
+              {history.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '40px' }}>
+                  <div style={{ fontSize: '64px', marginBottom: '20px' }}>📋</div>
+                  <h3>暂无历史记录</h3>
+                  <p style={{ color: '#666', marginTop: '10px' }}>
+                    当您选择股票后，记录将自动保存到这里
+                  </p>
+                  <button
+                    className="button"
+                    onClick={() => setActiveTab('stocks')}
+                    style={{ marginTop: '20px' }}
+                  >
+                    📋 去选择股票
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                    <h3>共 {history.length} 条记录</h3>
+                    <button
+                      className="button"
+                      onClick={() => {
+                        if (window.confirm('确定要清空所有历史记录吗？')) {
+                          setHistory([]);
+                          localStorage.removeItem('stockSelectionHistory');
+                        }
+                      }}
+                    >
+                      🗑️ 清空记录
+                    </button>
+                  </div>
+                  <div className="history-list">
+                    {history.map((record) => (
+                      <div key={record.id} className="history-item">
+                        <div className="history-header">
+                          <h4>选股时间: {record.formattedTime}</h4>
+                        </div>
+                        <div className="history-stocks">
+                          {record.stocks.map((stock, index) => (
+                            <div key={index} className="history-stock-item">
+                              <strong>{stock.name}</strong>
+                              <span style={{ color: '#666', marginLeft: '10px' }}>({stock.code})</span>
+                              <span className="badge badge-industry" style={{ marginLeft: '10px' }}>
+                                {stock.industry || '-'}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           </>
         )}
